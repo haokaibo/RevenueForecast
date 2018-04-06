@@ -12,8 +12,8 @@ from sklearn.metrics import mean_squared_error
 
 from db_helper.mysql_helper import MySqlHelper
 
-DEBUG = False
-N = 4000
+DEBUG = True
+N = 1
 
 
 class TimeSeries:
@@ -24,7 +24,7 @@ class TimeSeries:
         df = pd.read_csv(filename)
         return df
 
-    def process_data_into_database(self, filename):
+    def process_data_into_db(self, filename):
         raw_df = pd.read_csv(filename)
         mysql_helper = MySqlHelper()
 
@@ -63,159 +63,195 @@ class TimeSeries:
                 col_index += 1
                 mysql_helper.execute(insert_sql, (master_account_id, c, date, product_name, bu_name, region))
 
+    def get_train_data_from_db(self):
+        pass
 
-def forecast_revenue(self, input_file_name, final_goal_file_name, method, historical_data_df):
-    logging.info("1. Get the historical data.")
-    df = self.read_data(input_file_name)
-    indexes = ['Region', 'Master_Account_Id', 'Product']
-    date_columns = df.columns[7:31].tolist()
-    date_columns = [col.replace('Rev_', '') for col in date_columns]
-    df.columns = df.columns[0:7].tolist() + date_columns
-    train_cols = df.columns[7:31].tolist()
-    train_cols = indexes + train_cols
-    train = df[train_cols]
-    train.index = train[indexes]
-    transposed_train = train.transpose()[3:]
-    transposed_train.index = pd.to_datetime(transposed_train.index, format='%Y_%m')
+    def forecast_revenue(self, input_file_name, final_goal_file_name, forecast_filename,
+                         adjusted_forecast_filename, method='Holt-Linear'):
+        logging.info("1. Get the historical data.")
 
-    logging.info("2. Forecast based on historical data.")
-    forecast_period = 12
-    index = pd.date_range('2018-01-01', period=forecast_period, freq='MS')
-    forecast_df = pd.DataFrame(index=index, columns=transposed_train.columns)
+        df = self.read_data(input_file_name)
+        indexes = ['Region', 'BU', 'Master_Account_Id', 'Product']
+        date_columns = df.columns[7:31].tolist()
+        date_columns = [col.replace('Rev_', '') for col in date_columns]
+        df.columns = df.columns[0:7].tolist() + date_columns
 
-    i = 0
-    for col in transposed_train.columns:
-        i += 1
-        logging.info("\n\n%s forecast the revenue for customer %d. %s\n\n" % ('*' * 10, i, '*' * 10))
-        if DEBUG:
+        train_cols = df.columns[7:31].tolist()
+        train_cols = indexes + train_cols
+        train = df[train_cols]
+        train.index = train[indexes]
+
+        transposed_train = train.transpose()[4:]
+        transposed_train.index = pd.to_datetime(transposed_train.index, format='%Y_%m')
+        transposed_train = transposed_train.astype(np.float64)
+
+        logging.info("2. Forecast based on historical data.")
+        forecast_period = 12
+        index = pd.date_range(start='2018-01-01', periods=forecast_period, freq='MS')
+        forecast_df = pd.DataFrame(index=index, columns=transposed_train.columns)
+
+        i = 0
+        for col in transposed_train.columns:
+            i += 1
+            logging.info("\n\n%s forecast the revenue for customer %d. %s\n\n" % ('*' * 10, i, '*' * 10))
+            # if DEBUG:
             if i > N:
                 break
-        train_records = transposed_train.loc[:, [col]]
-        col_name = '_'.join(map(str, col))
 
-        logging.info("\nForecasting %s." % col_name)
+            train_records = transposed_train.loc[:, [col]]
 
-        if DEBUG:
-            # check the trend, seasonality
-            sm.tsa.seasonal_decompose(train_records[col]).plot()
-            result = sm.tsa.stattools.adfuller(train_records[col])
-            plt.savefig("%s_seasonal_decompose.png" % col_name)
-            plt.close()
+            col_name = '_'.join(map(str, col))
 
-        logging.info("Forecast with %s method." % method)
-        if method == 'Holt-Linear':
+            logging.info("\nForecasting %s." % col_name)
+
+            if DEBUG:
+                # check the trend, seasonality
+                sm.tsa.seasonal_decompose(train_records[col]).plot()
+                result = sm.tsa.stattools.adfuller(train_records[col])
+                plt.savefig("%s_seasonal_decompose.png" % col_name)
+                plt.close()
+
+            logging.info("Forecast with %s method." % method)
+            if method == 'Holt-Linear':
+                fit1 = Holt(np.asarray(train_records[col])).fit(smoothing_level=0.3, smoothing_slope=0.1)
+                forecast_df[col] = fit1.forecast(forecast_period)
+            elif method == 'Holt-Winters':
+                fit2 = ExponentialSmoothing(np.asarray(train_records[col]), seasonal_periods=1,
+                                            trend='add', seasonal='add', ).fit()
+                forecast_df[col] = fit2.forecast(forecast_period)
+            else:
+                return None
+
+            # draw the forecast picture with train and test data.
+            if DEBUG:
+                plt.figure(figsize=(16, 8))
+                plt.plot(train_records[col], label='Train')
+                plt.plot(forecast_df[col], label=method)
+                plt.legend(loc='best')
+                plt.savefig("%s_forecast.png" % col_name)
+                plt.close()
+
+        forecast_df = forecast_df.fillna(0)
+        logging.info("output the forecast data to %s." % forecast_filename)
+        forecast_df.to_csv(forecast_filename, index=False)
+
+        logging.info("3. Get the final goal for each BU.")
+
+        final_goal_df = pd.read_csv(final_goal_file_name)
+        final_goal_df['Rev_2018_To_Be_Allocated'] = final_goal_df['Rev_2018_To_Be_Allocated'].astype(np.float64)
+
+        logging.info("4. Adjust the forecast based on the final goal for each BU.")
+
+        transposed_forecast_df = forecast_df.transpose()
+        transposed_forecast_df['indexes'] = transposed_forecast_df.index.values
+        for n, col in enumerate(indexes):
+            transposed_forecast_df[col] = transposed_forecast_df['indexes'].apply(lambda cols: cols[n])
+
+        transposed_forecast_df = transposed_forecast_df.drop('indexes', axis=1)
+
+        logging.info("output to %s." % adjusted_forecast_filename)
+        transposed_forecast_df.to_csv(adjusted_forecast_filename, index=False)
+
+        final_df = transposed_forecast_df.merge(final_goal_df, on=['Region', 'BU'], how='left')
+        forecast_columns = final_df.columns[0:12].tolist()
+        final_df['sum_forecast_of_2018'] = final_df[forecast_columns].sum(axis=1)
+        individual_contributte_of_whole_year = final_df.groupby(['Region', 'BU', 'Product']).agg(
+            {'sum_forecast_of_2018': 'sum'})
+
+        for c in forecast_columns:
+            final_df[c] = final_df[c] / final_df['sum_forecast_of_2018'] * final_df['Rev_2018_To_Be_Allocated']
+
+        logging.info("5. Output the file forecast result to a file.")
+
+        logging.info("Output the final forecast data to %s" % adjusted_forecast_filename)
+        final_df.to_csv(adjusted_forecast_filename, index=False)
+
+    def forecast(self, filename):
+        logging.info('1. reading data.')
+
+        df = self.read_data(filename)
+
+        logging.info("2. clean the headers.")
+        indexes = ['Region', 'Master_Account_Id', 'Product']
+        date_columns = df.columns[7:31].tolist()
+        date_columns = [col.replace('Rev_', '') for col in date_columns]
+        df.columns = df.columns[0:7].tolist() + date_columns
+
+        logging.info("3. handle the trainning data.")
+        train_cols = df.columns[7:28].tolist()
+        train_cols = indexes + train_cols
+        train = df[train_cols]
+        train.index = train[indexes]
+        transposed_train = train.transpose()[3:]
+        transposed_train.index = pd.to_datetime(transposed_train.index, format='%Y_%m')
+
+        logging.info("4. handle the test data.")
+        test_cols = indexes + df.columns.values[28:31].tolist()
+        test = df[test_cols]
+        test.index = test[indexes]
+        transposed_test = test.transpose()[3:]
+        transposed_test.index = pd.to_datetime(transposed_test.index, format='%Y_%m')
+
+        # forecast dataset.
+        y_hat_avg = transposed_test.copy()
+        foreast_period = len(y_hat_avg)
+
+        logging.info("4. Iterate all the columns of the dataset to forecast each customer's revenue.")
+
+        transposed_train = transposed_train.astype(np.float64)
+        transposed_test = transposed_test.astype(np.float64)
+
+        i = 0
+        total_error_of_holt_linear = 0
+        total_error_of_holt_winter = 0
+        for col in transposed_train.columns:
+            i += 1
+            if i > N:
+                break
+            logging.info("\n\n%s forecast the revenue for customer %d. %s\n\n" % ('*' * 10, i, '*' * 10))
+
+            train_records = transposed_train.loc[:, [col]]
+            test_records = transposed_test.loc[:, [col]]
+            col_name = '_'.join(map(str, col))
+
+            logging.info("\nForecasting %s." % col_name)
+
+            if DEBUG:
+                # check the trend, seasonality
+                sm.tsa.seasonal_decompose(train_records[col]).plot()
+                result = sm.tsa.stattools.adfuller(train_records[col])
+                plt.savefig("%s_seasonal_decompose.png" % col_name)
+                plt.close()
+
+            logging.info("5.1 Forecast with Holt linear method.")
             fit1 = Holt(np.asarray(train_records[col])).fit(smoothing_level=0.3, smoothing_slope=0.1)
-            forecast_df[col] = fit1.forecast(forecast_period)
-        elif method == 'Holt-Winters':
-            fit2 = ExponentialSmoothing(np.asarray(train_records[col]), seasonal_periods=1,
+            y_hat_avg['Holt_linear'] = fit1.forecast(foreast_period)
+            rms1 = sqrt(mean_squared_error(test_records[col], y_hat_avg['Holt_linear']))
+            logging.info("Error from Holt linear method is %f" % rms1)
+            total_error_of_holt_linear += rms1
+
+            logging.info("5.2 Forecast with Holt Winter method.")
+            fit2 = ExponentialSmoothing(np.asarray(train_records[col]), seasonal_periods=7,
                                         trend='add', seasonal='add', ).fit()
-            forecast_df[col] = fit2.forecast(forecast_period)
-        else:
-            return None
+            y_hat_avg['Holt_Winter'] = fit2.forecast(len(transposed_test))
 
-        # draw the forecast picture with train and test data.
-        if DEBUG:
-            plt.figure(figsize=(16, 8))
-            plt.plot(train_records[col], label='Train')
-            plt.plot(forecast_period[col], label=method)
-            plt.legend(loc='best')
-            plt.savefig("%s_forecast.png" % col_name)
-            plt.close()
+            rms2 = sqrt(mean_squared_error(test_records[col], y_hat_avg['Holt_Winter']))
+            logging.info("Error from Holt Winter method is %f" % rms2)
+            total_error_of_holt_winter += rms2
 
-    logging.info("3. Get the final goal for each BU.")
-    final_goal_df = pd.read_csv(final_goal_file_name)
+            # draw the forecast picture with train and test data.
+            if DEBUG:
+                plt.figure(figsize=(16, 8))
+                plt.plot(train_records[col], label='Train')
+                plt.plot(test_records[col], label='Test')
+                plt.plot(y_hat_avg['Holt_linear'], label='Holt_linear')
+                plt.plot(y_hat_avg['Holt_Winter'], label='Holt_Winter')
+                plt.legend(loc='best')
+                plt.savefig("%s_forecast.png" % col_name)
+                plt.close()
 
-    logging.info("4. Adjust the forecast based on the final goal for each BU.")
-
-    logging.info("5. Output the forecast result to a file.")
-
-
-def forecast(self, filename):
-    logging.info('1. reading data.')
-
-    df = self.read_data(filename)
-
-    logging.info("2. clean the headers.")
-    indexes = ['Region', 'Master_Account_Id', 'Product']
-    date_columns = df.columns[7:31].tolist()
-    date_columns = [col.replace('Rev_', '') for col in date_columns]
-    df.columns = df.columns[0:7].tolist() + date_columns
-
-    logging.info("3. handle the trainning data.")
-    train_cols = df.columns[7:28].tolist()
-    train_cols = indexes + train_cols
-    train = df[train_cols]
-    train.index = train[indexes]
-    transposed_train = train.transpose()[3:]
-    transposed_train.index = pd.to_datetime(transposed_train.index, format='%Y_%m')
-
-    logging.info("4. handle the test data.")
-    test_cols = indexes + df.columns.values[28:31].tolist()
-    test = df[test_cols]
-    test.index = test[indexes]
-    transposed_test = test.transpose()[3:]
-    transposed_test.index = pd.to_datetime(transposed_test.index, format='%Y_%m')
-
-    # forecast dataset.
-    y_hat_avg = transposed_test.copy()
-    foreast_period = len(y_hat_avg)
-
-    logging.info("4. Iterate all the columns of the dataset to forecast each customer's revenue.")
-
-    transposed_train = transposed_train.astype(np.float64)
-    transposed_test = transposed_test.astype(np.float64)
-
-    i = 0
-    total_error_of_holt_linear = 0
-    total_error_of_holt_winter = 0
-    for col in transposed_train.columns:
-        i += 1
-        if i > N:
-            break
-        logging.info("\n\n%s forecast the revenue for customer %d. %s\n\n" % ('*' * 10, i, '*' * 10))
-
-        train_records = transposed_train.loc[:, [col]]
-        test_records = transposed_test.loc[:, [col]]
-        col_name = '_'.join(map(str, col))
-
-        logging.info("\nForecasting %s." % col_name)
-
-        if DEBUG:
-            # check the trend, seasonality
-            sm.tsa.seasonal_decompose(train_records[col]).plot()
-            result = sm.tsa.stattools.adfuller(train_records[col])
-            plt.savefig("%s_seasonal_decompose.png" % col_name)
-            plt.close()
-
-        logging.info("5.1 Forecast with Holt linear method.")
-        fit1 = Holt(np.asarray(train_records[col])).fit(smoothing_level=0.3, smoothing_slope=0.1)
-        y_hat_avg['Holt_linear'] = fit1.forecast(foreast_period)
-        rms1 = sqrt(mean_squared_error(test_records[col], y_hat_avg['Holt_linear']))
-        logging.info("Error from Holt linear method is %f" % rms1)
-        total_error_of_holt_linear += rms1
-
-        logging.info("5.2 Forecast with Holt Winter method.")
-        fit2 = ExponentialSmoothing(np.asarray(train_records[col]), seasonal_periods=7,
-                                    trend='add', seasonal='add', ).fit()
-        y_hat_avg['Holt_Winter'] = fit2.forecast(len(transposed_test))
-
-        rms2 = sqrt(mean_squared_error(test_records[col], y_hat_avg['Holt_Winter']))
-        logging.info("Error from Holt Winter method is %f" % rms2)
-        total_error_of_holt_winter += rms2
-
-        # draw the forecast picture with train and test data.
-        if DEBUG:
-            plt.figure(figsize=(16, 8))
-            plt.plot(train_records[col], label='Train')
-            plt.plot(test_records[col], label='Test')
-            plt.plot(y_hat_avg['Holt_linear'], label='Holt_linear')
-            plt.plot(y_hat_avg['Holt_Winter'], label='Holt_Winter')
-            plt.legend(loc='best')
-            plt.savefig("%s_forecast.png" % col_name)
-            plt.close()
-
-    logging.info("The total error from Holt linear method is %f." % total_error_of_holt_linear)
-    logging.info("The total error from Holt winter method is %f." % total_error_of_holt_winter)
+        logging.info("The total error from Holt linear method is %f." % total_error_of_holt_linear)
+        logging.info("The total error from Holt winter method is %f." % total_error_of_holt_winter)
 
 
 if __name__ == '__main__':

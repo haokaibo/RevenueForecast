@@ -24,5 +24,15 @@ class TimeSeriesTest(unittest.TestCase):
     def test_process_data_into_database(self):
         ts = TimeSeries()
         input_file_path = os.path.join(self.base_dir, 'Account_Historical_Revenue.csv')
-        r = ts.process_data_into_database(input_file_path)
+        r = ts.process_data_into_db(input_file_path)
+        logging.info(r)
+
+    def test_forecast_revenue(self):
+        ts = TimeSeries()
+        input_file_path = os.path.join(self.base_dir, 'Account_Historical_Revenue.csv')
+        final_goal_file_name = os.path.join(self.base_dir, 'total_number.csv')
+        forecast_file_path = os.path.join(self.base_dir, 'forecast.csv')
+        adjusted_forecast_file_path = os.path.join(self.base_dir, 'adjusted_forecast.csv')
+
+        r = ts.forecast_revenue(input_file_path, final_goal_file_name, forecast_file_path, adjusted_forecast_file_path)
         logging.info(r)

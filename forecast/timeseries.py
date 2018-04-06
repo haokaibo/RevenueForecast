@@ -1,3 +1,5 @@
+from math import sqrt
+
 import pandas as pd
 import logging
 import statsmodels.api as sm
@@ -5,9 +7,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 from statsmodels.tsa.api import Holt
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
+from sklearn.metrics import mean_squared_error
 
+DEBUG = False
 
-DEBUG = True
 
 class TimeSeries:
     def __init__(self):
@@ -54,10 +57,14 @@ class TimeSeries:
 
         i = 0
         N = 5
+        total_error_of_holt_linear = 0
+        total_error_of_holt_winter = 0
         for col in transposed_train.columns:
+            logging.info("\n\n%s forecast the revenue from %d customer. %s\n\n" % ('*' * 10, i, '*' * 10))
             i += 1
-            if i > N:
-                break
+            if DEBUG:
+                if i > N:
+                    break
             train_records = transposed_train.loc[:, [col]]
             test_records = transposed_test.loc[:, [col]]
             col_name = '_'.join(map(str, col))
@@ -74,12 +81,18 @@ class TimeSeries:
             logging.info("5.1 Forecast with Holt linear method.")
             fit1 = Holt(np.asarray(train_records[col])).fit(smoothing_level=0.3, smoothing_slope=0.1)
             y_hat_avg['Holt_linear'] = fit1.forecast(foreast_period)
-
+            rms1 = sqrt(mean_squared_error(test_records[col], y_hat_avg['Holt_linear']))
+            logging.info("Error from Holt linear method is %f" % rms1)
+            total_error_of_holt_linear += rms1
 
             logging.info("5.2 Forecast with Holt Winter method.")
             fit2 = ExponentialSmoothing(np.asarray(train_records[col]), seasonal_periods=7,
                                         trend='add', seasonal='add', ).fit()
             y_hat_avg['Holt_Winter'] = fit2.forecast(len(transposed_test))
+
+            rms2 = sqrt(mean_squared_error(test_records[col], y_hat_avg['Holt_Winter']))
+            logging.info("Error from Holt Winter method is %f" % rms2)
+            total_error_of_holt_winter += rms2
 
             # draw the forecast picture with train and test data.
             if DEBUG:
@@ -92,6 +105,8 @@ class TimeSeries:
                 plt.savefig("%s_forecast.png" % col_name)
                 plt.close()
 
+        logging.info("The total error from Holt linear method is %f." % total_error_of_holt_linear)
+        logging.info("The total error from Holt winter method is %f." % total_error_of_holt_winter)
 
 if __name__ == '__main__':
     filename = ''

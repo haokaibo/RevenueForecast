@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+
 from math import sqrt
 
 import pandas as pd
@@ -73,7 +73,6 @@ class TimeSeries:
         r = mysql_helper.fetch_all("SELECT * FROM total_number;")
         return r
 
-
     def forecast_revenue(self, historical_data_df, final_goal_df, forecast_filename,
                          adjusted_forecast_filename, method='Holt-Linear', set_negative_to_zero=True):
         logging.info("1. Get the historical data.")
@@ -118,7 +117,7 @@ class TimeSeries:
                 plt.savefig("%s_seasonal_decompose.png" % col_name)
                 plt.close()
 
-            if (train_records.iloc[:, 0]==0).all():
+            if (train_records.iloc[:, 0] == 0).all():
                 logging.warning("The historical data for %s is all 0. Just pass without forecast." % col_name)
                 continue
 
@@ -205,7 +204,7 @@ class TimeSeries:
         final_df = final_df[indexes + rev_cols]
         final_df = final_df.fillna(0)
 
-        final_df.sort_values(by=[('Region',),('BU',), ('Master_Account_Id',), ('Product',)], inplace=True)
+        final_df.sort_values(by=[('Region',), ('BU',), ('Master_Account_Id',), ('Product',)], inplace=True)
         final_df.to_csv(adjusted_forecast_filename, index=False)
 
     def forecast_test(self, filename):
@@ -250,13 +249,13 @@ class TimeSeries:
             i += 1
             if i > N:
                 break
-            logging.info("\n\n%s forecast the revenue for customer %d. %s\n\n" % ('*' * 10, i, '*' * 10))
+            logging.info("\n\n%s forecast the revenue for customer %d. %s\n" % ('*' * 10, i, '*' * 10))
 
             train_records = transposed_train.loc[:, [col]]
             test_records = transposed_test.loc[:, [col]]
             col_name = '_'.join(map(str, col))
 
-            logging.info("\nForecasting %s." % col_name)
+            logging.info("Forecasting %s." % col_name)
 
             if DEBUG:
                 # check the trend, seasonality
@@ -294,10 +293,3 @@ class TimeSeries:
 
         logging.info("The total error from Holt linear method is %f." % total_error_of_holt_linear)
         logging.info("The total error from Holt winter method is %f." % total_error_of_holt_winter)
-
-
-
-if __name__ == '__main__':
-    filename = ''
-    ts = TimeSeries()
-    ts.forecast_test(filename)

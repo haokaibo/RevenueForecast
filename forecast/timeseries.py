@@ -65,7 +65,14 @@ class TimeSeries:
 
     def get_train_data_from_db(self):
         mysql_helper = MySqlHelper()
-        r = mysql_helper.query("SELECT * FROM account_historical_revenue LIMIT 10;")
+        r = mysql_helper.fetch_all("SELECT * FROM account_historical_revenue;")
+        return r
+
+    def get_goal_from_db(self):
+        mysql_helper = MySqlHelper()
+        r = mysql_helper.fetch_all("SELECT * FROM total_number;")
+        return r
+
 
     def forecast_revenue(self, historical_data_df, final_goal_df, forecast_filename,
                          adjusted_forecast_filename, method='Holt-Linear', set_negative_to_zero=True):
@@ -280,6 +287,7 @@ class TimeSeries:
 
         logging.info("The total error from Holt linear method is %f." % total_error_of_holt_linear)
         logging.info("The total error from Holt winter method is %f." % total_error_of_holt_winter)
+
 
 
 if __name__ == '__main__':

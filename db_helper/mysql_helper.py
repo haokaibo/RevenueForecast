@@ -3,6 +3,8 @@ from mysql.connector import errorcode
 import mysql.connector as conn
 import logging
 
+from pandas import DataFrame
+
 
 class MySqlHelper:
     config = {
@@ -55,3 +57,29 @@ class MySqlHelper:
                 logging.error(err)
         else:
             cnx.close()
+
+    def fetch_all(self, query, params=None):
+        if query is None or query == '':
+            return None
+        try:
+            cnx = conn.connect(**MySqlHelper.config)
+            cursor = cnx.cursor()
+
+            iter = cursor.execute(query, params=params)
+            df = DataFrame(cursor.fetchall())
+            df.columns = cursor.column_names
+            # Make sure data is committed to the database
+            cnx.commit()
+            cursor.close()
+            cnx.close()
+            return df
+        except conn.Error as err:
+            if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:
+                logging.error("Something is wrong with your user name or password")
+            elif err.errno == errorcode.ER_BAD_DB_ERROR:
+                logging.error("Database does not exist")
+            else:
+                logging.error(err)
+        else:
+            cnx.close()
+            return None

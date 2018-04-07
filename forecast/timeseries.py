@@ -102,7 +102,7 @@ class TimeSeries:
             if DEBUG:
                 if i > N:
                     break
-            logging.info("\n\n%s forecast the revenue for customer %d. %s\n\n" % ('*' * 10, i, '*' * 10))
+            logging.info("\n\n%s forecast the revenue for customer %d. %s\n" % ('*' * 10, i, '*' * 10))
 
             train_records = transposed_train.loc[:, [col]]
 

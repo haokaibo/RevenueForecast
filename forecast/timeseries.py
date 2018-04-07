@@ -12,7 +12,7 @@ from sklearn.metrics import mean_squared_error
 
 from db_helper.mysql_helper import MySqlHelper
 
-DEBUG = True
+DEBUG = False
 N = 1
 
 
@@ -67,7 +67,7 @@ class TimeSeries:
         pass
 
     def forecast_revenue(self, input_file_name, final_goal_file_name, forecast_filename,
-                         adjusted_forecast_filename, method='Holt-Linear'):
+                         adjusted_forecast_filename, method='Holt-Linear', set_negative_to_zero=True):
         logging.info("1. Get the historical data.")
 
         df = self.read_data(input_file_name)
@@ -93,10 +93,10 @@ class TimeSeries:
         i = 0
         for col in transposed_train.columns:
             i += 1
+            if DEBUG:
+                if i > N:
+                    break
             logging.info("\n\n%s forecast the revenue for customer %d. %s\n\n" % ('*' * 10, i, '*' * 10))
-            # if DEBUG:
-            if i > N:
-                break
 
             train_records = transposed_train.loc[:, [col]]
 
@@ -132,8 +132,6 @@ class TimeSeries:
                 plt.close()
 
         forecast_df = forecast_df.fillna(0)
-        logging.info("output the forecast data to %s." % forecast_filename)
-        forecast_df.to_csv(forecast_filename, index=False)
 
         logging.info("3. Get the final goal for each BU.")
 
@@ -146,24 +144,61 @@ class TimeSeries:
         transposed_forecast_df['indexes'] = transposed_forecast_df.index.values
         for n, col in enumerate(indexes):
             transposed_forecast_df[col] = transposed_forecast_df['indexes'].apply(lambda cols: cols[n])
+        transposed_forecast_df.drop('indexes', axis=1, inplace=True)
 
-        transposed_forecast_df = transposed_forecast_df.drop('indexes', axis=1)
+        # rev_cols = transposed_forecast_df.columns[0: 12].tolist()
+        # rev_cols = [c.strftime('Rev_%Y_%m') for c in rev_cols]
+        # transposed_forecast_df.columns = [rev_cols + indexes]
+        # transposed_forecast_df = transposed_forecast_df[indexes + rev_cols]
 
-        logging.info("output to %s." % adjusted_forecast_filename)
-        transposed_forecast_df.to_csv(adjusted_forecast_filename, index=False)
+        if set_negative_to_zero:
+            # handle negative values:
+            num = transposed_forecast_df._get_numeric_data()
+            num[num < 0] = 0
+
+        logging.info("output the forecast data to %s." % forecast_filename)
+        transposed_forecast_df.to_csv(forecast_filename, index=False)
+
+        # meet the goal
 
         final_df = transposed_forecast_df.merge(final_goal_df, on=['Region', 'BU'], how='left')
+        final_df = final_df.fillna(0)
         forecast_columns = final_df.columns[0:12].tolist()
-        final_df['sum_forecast_of_2018'] = final_df[forecast_columns].sum(axis=1)
-        individual_contributte_of_whole_year = final_df.groupby(['Region', 'BU', 'Product']).agg(
-            {'sum_forecast_of_2018': 'sum'})
+        final_df['sum_forecast_of_year'] = final_df[forecast_columns].sum(axis=1)
 
+        individual_contributte_of_whole_year = final_df.groupby(['Region', 'BU', 'Master_Account_Id', 'Product']).agg(
+            {'sum_forecast_of_year': 'sum'})
+        individual_contributte_of_whole_year_pcts = individual_contributte_of_whole_year.groupby(
+            level=['Region', 'BU']).apply(
+            lambda x: x / float(x.sum()))
+
+        individual_contributte_of_whole_year_pcts = individual_contributte_of_whole_year_pcts.fillna(0)
+        individual_contributte_of_whole_year_pcts['indexes'] = individual_contributte_of_whole_year_pcts.index.values
+        for n, col in enumerate(indexes):
+            individual_contributte_of_whole_year_pcts[col] = individual_contributte_of_whole_year_pcts['indexes'].apply(
+                lambda cols: cols[n])
+        individual_contributte_of_whole_year_pcts = individual_contributte_of_whole_year_pcts.drop('indexes', axis=1)
+        individual_contributte_of_whole_year_pcts.rename(index=str, inplace=True,
+                                                         columns={"sum_forecast_of_year": "ratio_of_Region_BU"})
+        # individual_contributte_of_whole_year_pcts.to_csv(adjusted_forecast_filename, index=False)
+
+        final_df = final_df.merge(individual_contributte_of_whole_year_pcts, on=indexes)
         for c in forecast_columns:
-            final_df[c] = final_df[c] / final_df['sum_forecast_of_2018'] * final_df['Rev_2018_To_Be_Allocated']
+            final_df[c] = final_df[c] / final_df['sum_forecast_of_year'] * final_df['Rev_2018_To_Be_Allocated'] * \
+                          final_df['ratio_of_Region_BU']
 
         logging.info("5. Output the file forecast result to a file.")
 
         logging.info("Output the final forecast data to %s" % adjusted_forecast_filename)
+        rev_cols = final_df.columns[0: 12].tolist()
+        rev_cols = [c.strftime('Rev_%Y_%m') for c in rev_cols]
+        final_df.drop('Rev_2018_To_Be_Allocated', axis=1, inplace=True)
+        final_df.drop('sum_forecast_of_year', axis=1, inplace=True)
+        final_df.drop('ratio_of_Region_BU', axis=1, inplace=True)
+        final_df.columns = [rev_cols + indexes]
+        final_df = final_df[indexes + rev_cols]
+        final_df = final_df.fillna(0)
+        final_df.sort_values(by=[('Region',),('BU',), ('Master_Account_Id',), ('Product',)], inplace=True)
         final_df.to_csv(adjusted_forecast_filename, index=False)
 
     def forecast(self, filename):

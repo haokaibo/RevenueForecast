@@ -1,6 +1,7 @@
 import unittest
 import logging
 import os
+from datetime import datetime
 
 from forecast.timeseries import TimeSeries
 
@@ -27,12 +28,29 @@ class TimeSeriesTest(unittest.TestCase):
         r = ts.process_data_into_db(input_file_path)
         logging.info(r)
 
-    def test_forecast_revenue(self):
+    def test_forecast_revenue_by_setting_negtive_forecast_to_zero(self):
         ts = TimeSeries()
         input_file_path = os.path.join(self.base_dir, 'Account_Historical_Revenue.csv')
         final_goal_file_name = os.path.join(self.base_dir, 'total_number.csv')
-        forecast_file_path = os.path.join(self.base_dir, 'forecast.csv')
-        adjusted_forecast_file_path = os.path.join(self.base_dir, 'adjusted_forecast.csv')
+
+        current_time = datetime.now()
+        forecast_file_path = os.path.join(self.base_dir, 'forecast_%s.csv' % current_time.strftime("%Y%m%d%H%M"))
+        adjusted_forecast_file_path = os.path.join(self.base_dir,
+                                                   'adjusted_forecast_%s.csv' % current_time.strftime("%Y%m%d%H%M"))
 
         r = ts.forecast_revenue(input_file_path, final_goal_file_name, forecast_file_path, adjusted_forecast_file_path)
+        logging.info(r)
+
+    def test_forecast_revenue_by_not_setting_negtive_forecast_to_zero(self):
+        ts = TimeSeries()
+        input_file_path = os.path.join(self.base_dir, 'Account_Historical_Revenue.csv')
+        final_goal_file_name = os.path.join(self.base_dir, 'total_number.csv')
+
+        current_time = datetime.now()
+        forecast_file_path = os.path.join(self.base_dir, 'forecast_%s.csv' % current_time.strftime("%Y%m%d%H%M"))
+        adjusted_forecast_file_path = os.path.join(self.base_dir,
+                                                   'adjusted_forecast_%s.csv' % current_time.strftime("%Y%m%d%H%M"))
+
+        r = ts.forecast_revenue(input_file_path, final_goal_file_name, forecast_file_path, adjusted_forecast_file_path,
+                                set_negative_to_zero=False)
         logging.info(r)

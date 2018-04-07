@@ -118,12 +118,16 @@ class TimeSeries:
                 plt.savefig("%s_seasonal_decompose.png" % col_name)
                 plt.close()
 
+            if (train_records.iloc[:, 0]==0).all():
+                logging.warning("The historical data for %s is all 0. Just pass without forecast." % col_name)
+                continue
+
             logging.info("Forecast with %s method." % method)
             if method == 'Holt-Linear':
                 fit1 = Holt(np.asarray(train_records[col])).fit(smoothing_level=0.3, smoothing_slope=0.1)
                 forecast_df[col] = fit1.forecast(forecast_period)
             elif method == 'Holt-Winters':
-                fit2 = ExponentialSmoothing(np.asarray(train_records[col]), seasonal_periods=1,
+                fit2 = ExponentialSmoothing(np.asarray(train_records[col]), seasonal_periods=12,
                                             trend='add', seasonal='add', ).fit()
                 forecast_df[col] = fit2.forecast(forecast_period)
             else:
@@ -190,14 +194,17 @@ class TimeSeries:
         logging.info("5. Output the file forecast result to a file.")
 
         logging.info("Output the final forecast data to %s" % adjusted_forecast_filename)
+
         rev_cols = final_df.columns[0: 12].tolist()
         rev_cols = [c.strftime('Rev_%Y_%m') for c in rev_cols]
         final_df.drop('Rev_2018_To_Be_Allocated', axis=1, inplace=True)
         final_df.drop('sum_forecast_of_year', axis=1, inplace=True)
         final_df.drop('ratio_of_Region_BU', axis=1, inplace=True)
+
         final_df.columns = [rev_cols + indexes]
         final_df = final_df[indexes + rev_cols]
         final_df = final_df.fillna(0)
+
         final_df.sort_values(by=[('Region',),('BU',), ('Master_Account_Id',), ('Product',)], inplace=True)
         final_df.to_csv(adjusted_forecast_filename, index=False)
 

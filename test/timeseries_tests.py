@@ -17,10 +17,10 @@ class TimeSeriesTest(unittest.TestCase):
     def tearDown(self):
         pass
 
-    def test_forecast(self):
+    def test_forecast_test(self):
         ts = TimeSeries()
         input_file_path = os.path.join(self.base_dir, 'Account_Historical_Revenue.csv')
-        r = ts.forecast(input_file_path)
+        r = ts.forecast_test(input_file_path)
         logging.info(r)
 
     def test_process_data_into_database(self):

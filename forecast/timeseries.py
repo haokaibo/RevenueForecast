@@ -208,7 +208,7 @@ class TimeSeries:
         final_df.sort_values(by=[('Region',),('BU',), ('Master_Account_Id',), ('Product',)], inplace=True)
         final_df.to_csv(adjusted_forecast_filename, index=False)
 
-    def forecast(self, filename):
+    def forecast_test(self, filename):
         logging.info('1. reading data.')
 
         df = self.read_data(filename)
@@ -267,7 +267,7 @@ class TimeSeries:
 
             logging.info("5.1 Forecast with Holt linear method.")
             fit1 = Holt(np.asarray(train_records[col])).fit(smoothing_level=0.3, smoothing_slope=0.1)
-            y_hat_avg['Holt_linear'] = fit1.forecast(foreast_period)
+            y_hat_avg['Holt_linear'] = fit1.forecast_test(foreast_period)
             rms1 = sqrt(mean_squared_error(test_records[col], y_hat_avg['Holt_linear']))
             logging.info("Error from Holt linear method is %f" % rms1)
             total_error_of_holt_linear += rms1
@@ -275,7 +275,7 @@ class TimeSeries:
             logging.info("5.2 Forecast with Holt Winter method.")
             fit2 = ExponentialSmoothing(np.asarray(train_records[col]), seasonal_periods=7,
                                         trend='add', seasonal='add', ).fit()
-            y_hat_avg['Holt_Winter'] = fit2.forecast(len(transposed_test))
+            y_hat_avg['Holt_Winter'] = fit2.forecast_test(len(transposed_test))
 
             rms2 = sqrt(mean_squared_error(test_records[col], y_hat_avg['Holt_Winter']))
             logging.info("Error from Holt Winter method is %f" % rms2)
@@ -300,4 +300,4 @@ class TimeSeries:
 if __name__ == '__main__':
     filename = ''
     ts = TimeSeries()
-    ts.forecast(filename)
+    ts.forecast_test(filename)

@@ -2,6 +2,7 @@ import unittest
 import logging
 import os
 from datetime import datetime
+import pandas as pd
 
 from forecast.timeseries import TimeSeries
 
@@ -36,21 +37,23 @@ class TimeSeriesTest(unittest.TestCase):
         current_time = datetime.now()
         forecast_file_path = os.path.join(self.base_dir, 'forecast_%s.csv' % current_time.strftime("%Y%m%d%H%M"))
         adjusted_forecast_file_path = os.path.join(self.base_dir,
-                                                   'adjusted_forecast_%s.csv' % current_time.strftime("%Y%m%d%H%M"))
-
-        r = ts.forecast_revenue(input_file_path, final_goal_file_name, forecast_file_path, adjusted_forecast_file_path)
+                                                   'adjusted_forecast_%s_senario2.csv' % current_time.strftime("%Y%m%d%H%M"))
+        historical_data_df = pd.read_csv(input_file_path)
+        final_goal_df = pd.read_csv(final_goal_file_name)
+        r = ts.forecast_revenue(historical_data_df, final_goal_df, forecast_file_path, adjusted_forecast_file_path)
         logging.info(r)
 
     def test_forecast_revenue_by_not_setting_negtive_forecast_to_zero(self):
         ts = TimeSeries()
         input_file_path = os.path.join(self.base_dir, 'Account_Historical_Revenue.csv')
-        final_goal_file_name = os.path.join(self.base_dir, 'total_number.csv')
+        final_goal_file_path = os.path.join(self.base_dir, 'total_number.csv')
 
         current_time = datetime.now()
         forecast_file_path = os.path.join(self.base_dir, 'forecast_%s.csv' % current_time.strftime("%Y%m%d%H%M"))
         adjusted_forecast_file_path = os.path.join(self.base_dir,
-                                                   'adjusted_forecast_%s.csv' % current_time.strftime("%Y%m%d%H%M"))
-
-        r = ts.forecast_revenue(input_file_path, final_goal_file_name, forecast_file_path, adjusted_forecast_file_path,
+                                                   'adjusted_forecast_%s_senario1.csv' % current_time.strftime("%Y%m%d%H%M"))
+        historical_data_df = pd.read_csv(input_file_path)
+        final_goal_df = pd.read_csv(final_goal_file_path)
+        r = ts.forecast_revenue(historical_data_df, final_goal_df, forecast_file_path, adjusted_forecast_file_path,
                                 set_negative_to_zero=False)
         logging.info(r)

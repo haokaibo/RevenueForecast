@@ -64,21 +64,21 @@ class TimeSeries:
                 mysql_helper.execute(insert_sql, (master_account_id, c, date, product_name, bu_name, region))
 
     def get_train_data_from_db(self):
-        pass
+        mysql_helper = MySqlHelper()
+        r = mysql_helper.query("SELECT * FROM account_historical_revenue LIMIT 10;")
 
-    def forecast_revenue(self, input_file_name, final_goal_file_name, forecast_filename,
+    def forecast_revenue(self, historical_data_df, final_goal_df, forecast_filename,
                          adjusted_forecast_filename, method='Holt-Linear', set_negative_to_zero=True):
         logging.info("1. Get the historical data.")
 
-        df = self.read_data(input_file_name)
         indexes = ['Region', 'BU', 'Master_Account_Id', 'Product']
-        date_columns = df.columns[7:31].tolist()
+        date_columns = historical_data_df.columns[7:31].tolist()
         date_columns = [col.replace('Rev_', '') for col in date_columns]
-        df.columns = df.columns[0:7].tolist() + date_columns
+        historical_data_df.columns = historical_data_df.columns[0:7].tolist() + date_columns
 
-        train_cols = df.columns[7:31].tolist()
+        train_cols = historical_data_df.columns[7:31].tolist()
         train_cols = indexes + train_cols
-        train = df[train_cols]
+        train = historical_data_df[train_cols]
         train.index = train[indexes]
 
         transposed_train = train.transpose()[4:]
@@ -135,7 +135,6 @@ class TimeSeries:
 
         logging.info("3. Get the final goal for each BU.")
 
-        final_goal_df = pd.read_csv(final_goal_file_name)
         final_goal_df['Rev_2018_To_Be_Allocated'] = final_goal_df['Rev_2018_To_Be_Allocated'].astype(np.float64)
 
         logging.info("4. Adjust the forecast based on the final goal for each BU.")
@@ -145,11 +144,6 @@ class TimeSeries:
         for n, col in enumerate(indexes):
             transposed_forecast_df[col] = transposed_forecast_df['indexes'].apply(lambda cols: cols[n])
         transposed_forecast_df.drop('indexes', axis=1, inplace=True)
-
-        # rev_cols = transposed_forecast_df.columns[0: 12].tolist()
-        # rev_cols = [c.strftime('Rev_%Y_%m') for c in rev_cols]
-        # transposed_forecast_df.columns = [rev_cols + indexes]
-        # transposed_forecast_df = transposed_forecast_df[indexes + rev_cols]
 
         if set_negative_to_zero:
             # handle negative values:
@@ -180,7 +174,6 @@ class TimeSeries:
         individual_contributte_of_whole_year_pcts = individual_contributte_of_whole_year_pcts.drop('indexes', axis=1)
         individual_contributte_of_whole_year_pcts.rename(index=str, inplace=True,
                                                          columns={"sum_forecast_of_year": "ratio_of_Region_BU"})
-        # individual_contributte_of_whole_year_pcts.to_csv(adjusted_forecast_filename, index=False)
 
         final_df = final_df.merge(individual_contributte_of_whole_year_pcts, on=indexes)
         for c in forecast_columns:

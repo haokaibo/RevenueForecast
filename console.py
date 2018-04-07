@@ -13,7 +13,7 @@ def main(argv):
     usage = 'timeseries.py -d <working_dir> (optional. default is current directory.)' \
             ' -m <method> (optional. possible value should be "l"(Holt-Linear) or "w"(Holt-Winters). Default is "l")'
     try:
-        opts, args = getopt.getopt(argv, "hd:m", ["dir="])
+        opts, args = getopt.getopt(argv, "hd:m:", ["working_dir=", "method="])
     except getopt.GetoptError:
         print(usage)
         sys.exit(2)

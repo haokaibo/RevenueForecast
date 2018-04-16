@@ -5,6 +5,8 @@ import logging
 
 from pandas import DataFrame
 
+from util.timer import timer
+
 
 class MySqlHelper:
     config = {
@@ -15,6 +17,7 @@ class MySqlHelper:
         'raise_on_warnings': True,
     }
 
+    @timer(config)
     def query(self, query):
 
         if query is None or query == '':
